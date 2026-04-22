@@ -4,9 +4,14 @@
 # Programmed by Rustam Mussabayev (rmusab@gmail.com)
 # 20 August 2022
 
-# Original article with algorithm description:
+# Original article with nonparallel MDEClust algorithm description:
 # [1] Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for clustering problems. Pattern Recognition, Volume 114, 2021, 107849
 # https://doi.org/10.1016/j.patcog.2021.107849
+#
+# The parallel version of MDEClust algorithm is descrided in the following paper (If you use this code, please cite):
+# [2] Mussabayev, R., Mussabayev, R., Krassovitskiy, A., Ualiyeva, I. (2026). Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
+# In: Nguyen, N.T., et al. Advances in Computational Collective Intelligence. ICCCI 2025. Communications in Computer and Information Science, vol 2747.
+# Springer, Cham. https://doi.org/10.1007/978-3-032-10202-7_7
 
 import time
 import numpy as np
@@ -17,15 +22,19 @@ from hamerly import hamerly_kmeans
 
 # Squared Euclidean distances
 @njit
-def distance_mat(X,Y):
-    out = np.dot(X, Y.T)
-    NX = np.sum(X*X, axis=1)
-    NY = np.sum(Y*Y, axis=1)
-    for i in range(X.shape[0]):
-        for j in range(Y.shape[0]):
-            out[i,j] = NX[i] - 2.*out[i,j] + NY[j]
+def distance_mat(X, Y):
+    nx, d = X.shape
+    ny = Y.shape[0]
+    out = np.empty((nx, ny), dtype=X.dtype)
+    for i in range(nx):
+        for j in range(ny):
+            s = 0.0
+            for k in range(d):
+                diff = X[i, k] - Y[j, k]
+                s += diff * diff
+            out[i, j] = s
     return out
-
+    
 
 @njit
 def rep_nan(D): #D[np.isnan(D)] = np.nanmax(D)+1.0
@@ -92,45 +101,57 @@ def greedy_matching(A,B):
 def mutate(centers, center_ind, points, alpha):
     m, n = points.shape
     k = centers.shape[0]
-    target_mask = np.sum(np.isnan(centers), axis = 1) == 0
-    target_mask[center_ind] = False
-    n_target_clusters = np.sum(target_mask)
-    new_ind = -1
-    if n_target_clusters > 0:
-        d = np.full(m, np.inf)
-        target_centers = centers[target_mask]
-        # Each point points[i], is re-assigned to the closest possible center among the k−1 available ones.
+
+    # Valid centers except the one being removed/repaired
+    valid_mask = np.sum(np.isnan(centers), axis=1) == 0
+    valid_mask[center_ind] = False
+    n_valid = np.sum(valid_mask)
+
+    # If no valid center remains, just place the center on a random point
+    if n_valid == 0:
+        new_ind = np.random.randint(m)
+        centers[center_ind, :] = points[new_ind, :]
+        return new_ind
+
+    target_centers = centers[valid_mask]
+
+    # Step 2: nearest distance to one of the remaining K-1 centers    
+    nearest_dist = np.full(m, np.inf)
+    for i in range(m):
+        for j in range(n_valid):
+            sqdist = 0.0
+            for h in range(n):
+                diff = points[i, h] - target_centers[j, h]
+                sqdist += diff * diff
+            dist = np.sqrt(sqdist)   # use Euclidean distance, matching the text
+            if dist < nearest_dist[i]:
+                nearest_dist[i] = dist
+
+    # Step 3: roulette-wheel selection
+    # Eq. (9) in the paper is dimensionally inconsistent as written:
+    # d_i is defined as a scalar distance, so ||p_i - d_i||_2 is not well-defined.
+    # We therefore use the natural corrected form, with weights proportional to d_i:
+    # P(i) = (1 - alpha)/m + alpha * nearest_dist[i] / sum(nearest_dist)    
+    total = np.sum(nearest_dist)
+
+    if (not np.isfinite(total)) or total <= 0.0:
+        # all distances are zero or numerically invalid: revert to uniform
+        new_ind = np.random.randint(m)
+    else:
+        inv_m = 1.0 / m
+        r = np.random.random_sample()
+        cum = 0.0
+        new_ind = m - 1  # safe fallback in case of rounding
+
         for i in range(m):
-            for j in range(n_target_clusters):
-                dist = 0.0
-                for h in range(n):
-                    dist += (target_centers[j,h] - points[i,h])**2
-                d[i] = min(np.sqrt(dist),d[i])
-        # For each ith point, calculate the probability P[i] to be selected as the new cluster center.
-        pd = np.full(m, 0.0)
-        for i in range(m):
-            for j in range(n):
-                pd[i] += (points[i,j] - d[i])**2
-            pd[i] = np.sqrt(pd[i])
-        sum_pd = np.sum(pd)        
-        current_pot = 0.0
-        P = np.full(m, 0.0)
-        for i in range(m):
-            P[i] = ((1-alpha)*1/m)+(alpha*pd[i]/sum_pd)
-            current_pot += P[i]
-        # The choice is done by roulette wheel, which is a randomized operation applied in order to 
-        # select potentially useful point.
-        rand_val = np.random.random_sample() * current_pot
-        cum_sum = 0.0
-        for i in range(m):
-            cum_sum += P[i]
-            if cum_sum >= rand_val:
+            prob = (1.0 - alpha) * inv_m + alpha * (nearest_dist[i] / total)
+            cum += prob
+            if r <= cum:
                 new_ind = i
                 break
-    else:
-        new_ind = np.random.randint(m)
-    if new_ind > -1:
-        centers[center_ind,:] = points[new_ind,:]
+
+    centers[center_ind, :] = points[new_ind, :]
+    return new_ind
 
         
 @njit(parallel = False)
@@ -265,7 +286,7 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
                 if mutation:
                     # A random center is selected with uniform probability and mutated.
                     mutate(O, np.random.randint(k), points, alpha)
-                    n_dists += m*(k-1)+m
+                    n_dists += m*(k-1)
 
                 # Repair solution having degenerate clusters
                 degenerate_mask = np.sum(np.isnan(O), axis = 1) > 0
@@ -274,7 +295,7 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
                     degenerate_inds = np.arange(k)[degenerate_mask]
                     for center_ind in degenerate_inds:
                         mutate(O, center_ind, points, alpha)
-                        n_dists += m*(k-1)+m
+                        n_dists += m*(k-1)
 
                 # Apply local search (K-MEANS) to offspring O to obtain a solution O';
                 new_objective, _, new_assignment, numDistances = hamerly_kmeans(points, O)
@@ -284,21 +305,32 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
                 # The returned solution O' is compared with the considered solution S_i in terms of 
                 # objective function value: if solution O' is better than S_i, this latter one is 
                 # replaced in the population; otherwise, the solution O' is discarded.
+
+                improved_best = False
+                
                 if new_objective < objectives[i]:
-                   
-                    if new_objective < np.min(objectives): # Check if the solution O' has the best objective
+
+                    # Accept offspring
+                    objectives[i] = new_objective
+                    centers[i] = np.copy(O)
+                    assignment[i] = np.copy(new_assignment)
+
+                    # Check global improvement                
+                    if new_objective < best_objective:
+                        best_objective = new_objective
+                        improved_best = True
                         n_idle = 0
-                        with objmode(time_now = 'float64'):
+                
+                        with objmode(time_now='float64'):
                             time_now = time.perf_counter() - start_time
                         best_time = time_now
                         best_n_execs = n_execs
                         best_n_dists = n_dists
+                
                         if printing:
                             print(new_objective, best_n_execs, diversity(objectives))
-                    objectives[i] = new_objective
-                    centers[i] = np.copy(O)
-                    assignment[i] = np.copy(new_assignment)
-                else:
+                
+                if not improved_best:
                     n_idle += 1
 
     if printing:
@@ -307,7 +339,6 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
         print('n_idle = ',n_idle)
         print('diversity = ',diversity(objectives))
         print('n_distances = ',n_dists)
-        print('')        
     
     best = np.argmin(objectives)
 
@@ -323,9 +354,10 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
     Sum-of-Squares Clustering (MSSC) problem. Programmed by Rustam Mussabayev (rmusab@gmail.com),
     20 August 2022.
 
-    Original article with algorithm description:
-    [1] Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for clustering problems.
-    Pattern Recognition, Volume 114, 2021, 107849. https://doi.org/10.1016/j.patcog.2021.107849
+    If you use this code, please cite:
+    [2] Mussabayev, R., Mussabayev, R., Krassovitskiy, A., Ualiyeva, I. (2026). Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
+    In: Nguyen, N.T., et al. Advances in Computational Collective Intelligence. ICCCI 2025. Communications in Computer and Information Science, vol 2747.
+    Springer, Cham. https://doi.org/10.1007/978-3-032-10202-7_7
 
     @param points: Training instances to cluster as matrix of shape (n_samples, n_features).
     @param k: The number of clusters to form as well as the number of centers to generate.
@@ -445,7 +477,7 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
                 if mutation:
                     # A random center is selected with uniform probability and mutated.
                     mutate(O, np.random.randint(k), points, alpha)
-                    n_dists[i] += m*(k-1)+m
+                    n_dists[i] += m*(k-1)
 
                 # Repair solution having degenerate clusters
                 degenerate_mask = np.sum(np.isnan(O), axis = 1) > 0
@@ -454,7 +486,7 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
                     degenerate_inds = np.arange(k)[degenerate_mask]
                     for center_ind in degenerate_inds:
                         mutate(O, center_ind, points, alpha)
-                        n_dists[i] += m*(k-1)+m
+                        n_dists[i] += m*(k-1)
 
                 # Apply local search (K-MEANS) to offspring O to obtain a solution O';
                 new_objective, _, new_assignment, numDistances = hamerly_kmeans(points, O)
@@ -464,12 +496,19 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
                 # The returned solution O' is compared with the considered solution S_i in terms of 
                 # objective function value: if solution O' is better than S_i, this latter one is 
                 # replaced in the population; otherwise, the solution O' is discarded.
+
+                improved_best = False
+                
                 if new_objective < objectives[i]:
                     best_n_execs[i] = np.sum(n_execs)
+
+                    # Check global improvement
                     if new_objective < np.min(objectives): # Check if the solution O' has the best objective
                         n_idle[:] = 0
+                        improved_best = True
                         if printing:
                             print (new_objective, best_n_execs[i], diversity(objectives))
+
                     objectives[i] = new_objective
                     centers[i] = np.copy(O)
                     assignment[i] = np.copy(new_assignment)
@@ -478,8 +517,10 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
                         time_now = time.perf_counter() - start_time
                     best_time[i] = time_now                    
                     best_n_dists[i] = np.sum(n_dists)
-                else:
-                    n_idle[i] += 1                
+                    
+                if not improved_best:
+                    n_idle[i] += 1
+                    
 
     n_distances = np.sum(n_dists)
     n_executions = np.sum(n_execs)
@@ -488,11 +529,8 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
         print('n_executions = ',n_executions)
         print('n_idle = ',np.sum(n_idle))
         print('diversity = ',diversity(objectives))
-        print('n_distances = ',n_distances)
-        print('')        
-    
+        print('n_distances = ',n_distances)    
    
     best = np.where(best_time == np.min(best_time[objectives == np.min(objectives)]))[0][0]
    
     return objectives[best], centers[best], assignment[best], n_distances, n_executions, best_time[best], best_n_execs[best], best_n_dists[best]
-
