@@ -1,33 +1,53 @@
-# Python/Numba implementation of Hamerly's method for exact k-means acceleration using triangle inequality:
-# G. Hamerly. Making k-means even faster. In SDM'10, SIAM International Conference on Data Mining, 2010, pp. 130-140.
-# Original C++ source code: https://github.com/ghamerly/fast-kmeans
-# Adopted for Python/Numba by Rustam Mussabayev (rmusab@gmail.com)
-# 14 February 2023
+"""
+============================================================================
+Hamerly K-means: Exact K-means Acceleration
+
+Provides a Python/Numba implementation of Hamerly's exact K-means acceleration
+method based on the triangle inequality, together with a naive K-means
+implementation for comparison.
+
+The Hamerly algorithm accelerates the standard K-means assignment step by
+maintaining upper and lower bounds on distances between data points and cluster
+centers, while preserving the exact K-means result.
+
+Main functions:
+hamerly_kmeans  Accelerated exact K-means using Hamerly's method
+naive_kmeans    Standard naive K-means implementation for comparison
+
+Main input parameters:
+points             Data points to be clustered
+centers            Initial cluster centers
+max_iters          Maximum number of K-means iterations (<0 means no limit)
+use_inner_product  Use squared Euclidean distance computed through inner products
+
+Returned values:
+f             Sum-of-squares clustering objective value
+iterations    Number of K-means iterations
+assignment    Cluster assignment of each data point
+numDistances  Number of calculated squared Euclidean distances
+
+The implemented algorithm is based on the following paper:
+
+[1] Greg Hamerly.
+Making k-means Even Faster.
+In: Proceedings of the 2010 SIAM International Conference on Data Mining
+(SDM 2010), pp. 130-140.
+SIAM, 2010.
+
+Original C++ source code:
+https://github.com/ghamerly/fast-kmeans
+
+Adapted for Python/Numba by Rustam Mussabayev (rmusab@gmail.com)
+14 February 2023
+============================================================================
+"""
 
 import math
 import numpy as np
 from numba import njit
 
-# INPUT PARAMETERS:
-#
-# points            - data points for clustering;
-# centers           - initial cluster centers;
-# max_iters         - maximum number of iterations. If max_iters <= 0 then there are 
-#                     no any limitations on maximum number of iterations.
-# use_inner_product - If True then advanced Euclidian distance re-casted in temms 
-#                     of inner product is used which is more suitable for high dimensional 
-#                     sparse data instead of simple one.
-#                     the Euclidian distance re-casted in temms of inner product is used 
-#
-# OUTPUT: 
-#
-# centers           - final cluster centers;
-# f                 - value of objective (the sum of the squared error);
-# iterations        - total number of iterations;
-# assignment        - the value of assignment[i] determines the index of assigned cluster for i-th point;
-# numDistances      - total number of Euclidian distance calculations.
 
-@njit
+@njit(parallel=False)
 def hamerly_kmeans(points, centers, max_iters = -1, use_inner_product = True):   
     numDistances = 0
     def dist2(point1, point2):
@@ -148,7 +168,7 @@ def hamerly_kmeans(points, centers, max_iters = -1, use_inner_product = True):
 
 # "Naive K-means" algorithm similar in functionality to the listed above "Hamerly K-means" algorithm
 # Not for practical usage. It is relevant only for comparison with other clustering algorithms.
-@njit
+@njit(parallel=False)
 def naive_kmeans(points, centers, max_iters = -1, use_inner_product = True):
     def dist2(point1, point2):
         if use_inner_product:

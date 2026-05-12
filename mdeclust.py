@@ -1,17 +1,46 @@
-# Parallel and non-parallel (standard) implementation of
-# Memetic Differential Evolution (MDEClust) algorithm [1]
-# for the Euclidean Minimum Sum-of-Squares Clustering (MSSC) problem
-# Programmed by Rustam Mussabayev (rmusab@gmail.com)
-# 20 August 2022
+"""
+============================================================================
+MDEClust: Sequential and Parallel Implementations
 
-# Original article with nonparallel MDEClust algorithm description:
-# [1] Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for clustering problems. Pattern Recognition, Volume 114, 2021, 107849
-# https://doi.org/10.1016/j.patcog.2021.107849
-#
-# The parallel version of MDEClust algorithm is descrided in the following paper (If you use this code, please cite):
-# [2] Mussabayev, R., Mussabayev, R., Krassovitskiy, A., Ualiyeva, I. (2026). Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
-# In: Nguyen, N.T., et al. Advances in Computational Collective Intelligence. ICCCI 2025. Communications in Computer and Information Science, vol 2747.
-# Springer, Cham. https://doi.org/10.1007/978-3-032-10202-7_7
+Provides sequential and parallel implementations of the Memetic Differential
+Evolution Clustering (MDEClust) algorithm for solving the Euclidean Minimum
+Sum-of-Squares Clustering (MSSC) problem, also known as the K-means clustering
+problem.
+
+The sequential implementation follows the MDEClust method described in [2].
+The parallel implementation is proposed in [1].
+
+Main MDEClust parameters:
+
+k               Number of clusters
+population_size Number of complete clustering solutions used to form the population
+tol             Diversity threshold for the stopping criterion
+nmax            Maximum number of consecutive non-improving iterations
+matching_mode   Center matching method: 0 = Hungarian, 1 = greedy
+mutation        Enable/disable mutation operator
+alpha           Mutation bias parameter: 0 = uniform, 1 = greedy
+n_attempts      Number of attempts to select distinct parent solutions
+
+Default parameter settings follow [2].
+
+Please cite the following paper if you use this code:
+
+[1] Rustam Mussabayev, Ravil Mussabayev, Alexander Krassovitskiy, Irina Ualiyeva (2026). 
+Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
+In: Nguyen, N.T., et al. Advances in Computational Collective Intelligence. 
+ICCCI 2025. Communications in Computer and Information Science, vol 2747.
+Springer, Cham. https://doi.org/10.1007/978-3-032-10202-7_7
+
+The MDEClust algorithm implemented here is based on the method described in:
+
+[2] Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for 
+clustering problems. Pattern Recognition, Volume 114, 2021, 107849
+https://doi.org/10.1016/j.patcog.2021.107849
+
+Programmed by Rustam Mussabayev (rmusab@gmail.com)
+20 August 2022
+============================================================================
+"""
 
 import time
 import numpy as np
@@ -47,7 +76,7 @@ def rep_nan(D): #D[np.isnan(D)] = np.nanmax(D)+1.0
                 
 # Return True if two solutions A and B (assignment vectors) are equal.
 @njit
-def check_identity(A,B,k):
+def check_identity(A, B, k):
     m = A.shape[0]    
     assert B.shape[0] == m
     mapping = np.full(k, -1)
@@ -154,15 +183,15 @@ def mutate(centers, center_ind, points, alpha):
     return new_ind
 
         
-@njit(parallel = False)
-def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000, matching_mode=0, mutation=False, alpha=0.5, n_attempts = 3, printing=False):
+@njit(parallel=False)
+def mdeclust_sequential(points, k=3, population_size=150, tol=0.0001, nmax=5000, matching_mode=0, mutation=False, alpha=0.5, n_attempts=3, printing=False):
     """
-    Standard (non-parallel) implementation of Memetic Differential Evolution (MDEClust) algorithm [1] 
+    Standard sequential implementation of Memetic Differential Evolution (MDEClust) algorithm 
     for the Euclidean Minimum Sum-of-Squares Clustering (MSSC) problem. 
     Programmed by Rustam Mussabayev (rmusab@gmail.com), 20 August 2022.
 
-    Original article with algorithm description:
-    [1] Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for clustering problems.
+    The implementation follows the method described by
+    Pierluigi Mansueto, Fabio Schoen. Memetic differential evolution methods for clustering problems.
     Pattern Recognition, Volume 114, 2021, 107849. https://doi.org/10.1016/j.patcog.2021.107849
 
     @param points: Training instances to cluster as matrix of shape (n_samples, n_features).
@@ -280,7 +309,7 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
                 S1 = S1[inds1]
                 S2 = S2[inds2]
                 S3 = S3[inds3]                
-                F = np.random.uniform(0.5, 0.8) # F is chosen randomly in the interval [0.5, 0.8] at each crossover operator execution
+                F = np.random.uniform(0.5, 0.8) # F is choosen randomly in the interval [0.5, 0.8] at each crossover operator execution
                 # Crossover is composed by a linear combination of the three selected solutions:
                 O = S1+F*(S2-S3) # Apply the Differential Evolution (DE) algorithm to calculate the new offspring solution O                    
                 if mutation:
@@ -335,27 +364,25 @@ def mdeclust_nonparallel(points, k = 3, population_size=150, tol=0.0001, nmax=50
 
     if printing:
         print('')
-        print('n_executions = ',n_execs)
-        print('n_idle = ',n_idle)
-        print('diversity = ',diversity(objectives))
-        print('n_distances = ',n_dists)
+        print('#Executions: ', n_execs)
+        print('#Idle: ', n_idle)        
+        print('#Distances: ', n_dists)
+        print('Diversity: ', diversity(objectives))
     
     best = np.argmin(objectives)
 
     return objectives[best], centers[best], assignment[best], n_dists, n_execs, best_time, best_n_execs, best_n_dists
 
 
-
-
-@njit(parallel = True)
-def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000, matching_mode=0, mutation=False, alpha=0.5, n_attempts = 3, printing=False):
+@njit(parallel=True)
+def mdeclust_parallel(points, k=3, population_size=150, tol=0.0001, nmax=5000, matching_mode=0, mutation=False, alpha=0.5, n_attempts=3, printing=False):
     """
-    Parallel implementation of Memetic Differential Evolution (MDEClust) algorithm [1] for the Euclidean Minimum
+    Parallel implementation of Memetic Differential Evolution (MDEClust) algorithm for the Euclidean Minimum
     Sum-of-Squares Clustering (MSSC) problem. Programmed by Rustam Mussabayev (rmusab@gmail.com),
     20 August 2022.
 
     If you use this code, please cite:
-    [2] Mussabayev, R., Mussabayev, R., Krassovitskiy, A., Ualiyeva, I. (2026). Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
+    Mussabayev, R., Mussabayev, R., Krassovitskiy, A., Ualiyeva, I. (2026). Parallel Memetic Differential Evolution for Minimum Sum-of-Squares Clustering.
     In: Nguyen, N.T., et al. Advances in Computational Collective Intelligence. ICCCI 2025. Communications in Computer and Information Science, vol 2747.
     Springer, Cham. https://doi.org/10.1007/978-3-032-10202-7_7
 
@@ -471,7 +498,7 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
                 S1 = S1[inds1]
                 S2 = S2[inds2]
                 S3 = S3[inds3]                
-                F = np.random.uniform(0.5, 0.8) # F is chosen randomly in the interval [0.5, 0.8] at each crossover operator execution
+                F = np.random.uniform(0.5, 0.8) # F is choosen randomly in the interval [0.5, 0.8] at each crossover operator execution
                 # Crossover is composed by a linear combination of the three selected solutions:
                 O = S1+F*(S2-S3) # Apply the Differential Evolution (DE) algorithm to calculate the new offspring solution O                    
                 if mutation:
@@ -526,10 +553,10 @@ def mdeclust_parallel(points, k = 3, population_size=150, tol=0.0001, nmax=5000,
     n_executions = np.sum(n_execs)
     if printing:
         print('')
-        print('n_executions = ',n_executions)
-        print('n_idle = ',np.sum(n_idle))
-        print('diversity = ',diversity(objectives))
-        print('n_distances = ',n_distances)    
+        print('#Executions: ', n_executions)
+        print('#Idle: ', np.sum(n_idle))        
+        print('#Distances: ', n_distances)
+        print('Diversity: ', diversity(objectives))
    
     best = np.where(best_time == np.min(best_time[objectives == np.min(objectives)]))[0][0]
    

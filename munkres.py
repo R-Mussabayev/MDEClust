@@ -1,10 +1,39 @@
-# Pure-Numba Kuhn-Munkres realization of Hungarian algorithm for parallel processing.
-# Adopted by Rustam Mussabayev from the original numba-munkres project.
+"""
+============================================================================
+Munkres: Pure-Numba Hungarian Algorithm
 
-# Original project is acceptable at https://github.com/hudl/numba-munkres
-# and licensed under the Apache License, Version 2.0.
-# See https://github.com/hudl/numba-munkres/blob/master/LICENSE.md for details.
-# Copyright © 2008 Brian M. Clapper.
+Provides a pure-Numba implementation of the Kuhn-Munkres algorithm
+(Hungarian algorithm) for solving the linear assignment problem.
+
+The implementation supports rectangular cost matrices by internally
+padding them to square matrices. The algorithm computes a minimum-cost
+one-to-one assignment between rows and columns.
+
+Main functions:
+munkres     Solve the linear assignment problem
+pad_matrix  Pad a rectangular matrix to a square matrix
+
+Main input parameters:
+cost_matrix  Cost matrix of shape (n_rows, n_cols)
+
+Returned values:
+matches      Vector of row-to-column assignments
+
+The implementation is adapted from the following open-source project:
+
+https://github.com/hudl/numba-munkres
+
+Original project license:
+Apache License, Version 2.0
+https://github.com/hudl/numba-munkres/blob/master/LICENSE.md
+
+Original project copyright:
+Copyright © 2008 Brian M. Clapper
+
+Adapted for pure Numba parallel-compatible processing
+by Rustam Mussabayev
+============================================================================
+"""
 
 from numba import njit
 import numpy as np
