@@ -79,8 +79,8 @@ def main():
     alpha = 0.5             # Mutation bias parameter (0: uniform, 1: greedy)
     n_attempts = 3          # Number of attempts to select distinct parent solutions
     
-    nb.set_num_threads(nb.config.NUMBA_NUM_THREADS) # Use the maximum available number of Numba threads
-    # nb.set_num_threads(3) # Use a fixed number of Numba threads
+    nb.set_num_threads(nb.config.NUMBA_NUM_THREADS) # Use the maximum available number of parallel threads
+    # nb.set_num_threads(3) # Use a fixed number of parallel threads
     # nb.set_num_threads(1) # Run the parallel implementation with one thread (equivalent to sequential mode)
 
     n_threads = nb.get_num_threads()
@@ -134,6 +134,8 @@ def main():
     
     print('#Total K-means executions: ', n_execs)
     print('#Total Distance Calculations: ', n_dists)
+    print()
+    print()
     print()
     
     
