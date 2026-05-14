@@ -2,8 +2,9 @@
 
 The Memetic Differential Evolution Clustering (MDEClust) algorithm is an
 effective metaheuristic approach for solving the Euclidean Minimum
-Sum-of-Squares Clustering (MSSC) problem, often producing high-quality
-clustering solutions for small and medium-scale datasets.
+Sum-of-Squares Clustering (MSSC) problem, capable of producing high-quality
+clustering solutions for small and medium-scale datasets. The MSSC objective
+corresponds to the classical K-means clustering criterion.
 
 In addition to a sequential MDEClust implementation based on [2], this
 repository includes a parallel implementation proposed in [1], which combines
@@ -12,16 +13,16 @@ parallel framework.
 
 Experimental results reported in [1] demonstrate that the parallel
 MDEClust implementation achieves substantial runtime reductions while
-preserving or improving clustering quality across benchmark datasets
+maintaining competitive clustering quality across benchmark datasets
 compared with the sequential implementation.
 
-The repository includes:
+This repository includes:
 
 - Sequential MDEClust implementation based on [2]
 - Parallel MDEClust implementation proposed in [1]
 - Python/Numba implementation of the accelerated Hamerly K-means algorithm [3]
-- Pure-Numba implementation of the Hungarian (Kuhn-Munkres) algorithm based on [4]
-- Example experiment scripts and benchmark configurations
+- Python/Numba implementation of the Hungarian (Kuhn-Munkres) algorithm based on [4]
+- Example experiment script and sample dataset
 
 Programmed by Rustam Mussabayev (rmusab@gmail.com)
 
@@ -33,7 +34,7 @@ Initial release: 20 August 2022
 
 - Sequential and parallel MDEClust implementations
 - Numba JIT acceleration
-- Parallel execution using `prange`
+- Multi-threaded parallel execution
 - Hamerly-accelerated exact K-means
 - Pure-Numba Hungarian algorithm implementation
 - Support for large-scale clustering experiments
@@ -41,7 +42,7 @@ Initial release: 20 August 2022
   - objective values
   - execution times
   - number of K-means executions
-  - number of Euclidean distance calculations
+  - number of squared Euclidean distance calculations
 
 ---
 
@@ -50,7 +51,6 @@ Initial release: 20 August 2022
 - Python 3.10+
 - NumPy
 - Numba
-
 
 Install dependencies using:
 
@@ -63,11 +63,13 @@ pip install numpy numba
 ## Repository Structure
 
 ```text
-mdeclust.py      Sequential and parallel MDEClust implementations
-hamerly.py       Hamerly accelerated exact K-means implementation
-munkres.py       Pure-Numba Hungarian algorithm implementation
-mdeclust_demo.py Example experiment script
-README.md        Project documentation
+mdeclust.py           Sequential and parallel MDEClust implementations
+hamerly.py            Hamerly accelerated exact K-means implementation
+munkres.py            Pure-Numba Hungarian algorithm implementation
+mdeclust_demo.py      Example experiment script
+liver_disorders.data  Sample dataset used by the demo script
+requirements.txt      Python package dependencies
+README.md             Project documentation
 ```
 
 ---
@@ -86,26 +88,55 @@ python mdeclust_demo.py
 ## Example Usage
 
 ```python
+import numpy as np
 from mdeclust import mdeclust_parallel
 
+# Generate a synthetic dataset of uniformly distributed random points
+rng = np.random.default_rng(42)
+points = rng.random((300, 2))
+
+# Run MDEClust
 objective, centers, assignment, n_dists, n_execs, \
-best_time, best_n_execs, best_n_dists = \
-    mdeclust_parallel(
-        points,
-        k=20,
-        population_size=150,
-        tol=0.0001,
-        nmax=5000,
-        matching_mode=0,
-        mutation=False,
-        alpha=0.5,
-        n_attempts=3,
-        printing=True
-    )
+best_time, best_n_execs, best_n_dists = mdeclust_parallel(
+    points,
+    k=3,                   # Number of clusters
+    population_size=20,    # Population size for Differential Evolution
+    tol=0.0001,            # Relative improvement tolerance
+    nmax=100,              # Maximum number of iterations
+    matching_mode=0,       # 0 = Hungarian matching, 1 = greedy matching
+    mutation=False,        # Enable or disable mutation operator
+    alpha=0.5,             # Fraction of the population to be replaced
+    n_attempts=3,          # Number of attempts to repair empty clusters
+    printing=True,         # Print progress information
+)
 
 print("Final Objective:", objective)
+print("Cluster Centers:")
+print(centers)
 print("Time to Best Solution:", best_time)
 ```
+
+For a complete experiment using the included `liver_disorders.data`
+dataset, run:
+
+```bash
+python mdeclust_demo.py
+```
+
+---
+
+### Output
+
+The algorithm returns:
+
+- `objective` — final MSSC objective value
+- `centers` — cluster centers
+- `assignment` — cluster assignment for each point
+- `n_dists` — number of squared Euclidean distance calculations
+- `n_execs` — number of K-means executions
+- `best_time` — time required to obtain the best solution
+- `best_n_execs` — number of K-means executions performed before obtaining the best solution
+- `best_n_dists` — number of Euclidean distance calculations performed before obtaining the best solution
 
 ---
 
@@ -113,10 +144,10 @@ print("Time to Best Solution:", best_time)
 
 The repository includes a parallel implementation of MDEClust proposed in [1].
 
-The parallelization strategy is based on parallel population processing using
-Numba's `prange` functionality. Independent clustering solutions within the
-population are processed concurrently, allowing efficient utilization of
-multi-core CPU architectures.
+The parallel implementation distributes population-level computations across 
+multiple CPU threads. Independent clustering solutions within the population 
+are processed concurrently, allowing efficient utilization of multi-core 
+CPU architectures.
 
 The implementation is intended for large-scale clustering problems where the
 computational cost of repeated K-means executions becomes significant.

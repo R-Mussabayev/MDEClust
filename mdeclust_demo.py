@@ -66,7 +66,7 @@ def load_dataset(filename, delimiter, columns):
 def main():
        
     filename = Path(__file__).resolve().parent / 'liver_disorders.data'
-    points = load_dataset(filename, ',', slice(0, 6)) # Dataset to be clustered
+    points = load_dataset(filename, ',', slice(0, 6)) # Load the sample UCI Liver Disorders dataset to be clustered
     
     n_clusters = 20 # Desired number of clusters
     
