@@ -115,22 +115,23 @@ The optimization process works as follows [2]:
    alignment is performed using either the exact Hungarian algorithm or a faster
    greedy matching strategy.
 
+
 4. A new candidate clustering solution is generated using the Differential
    Evolution (DE) recombination rule:
 
-   \[
+   $$
    O = S_1 + F \cdot (S_2 - S_3)
-   \]
+   $$
 
-   where \(S_1, S_2,\) and \(S_3\) are aligned parent clustering solutions,
-   \(S_2 - S_3\) is the differential vector between two parent solutions,
-   \(F\) is a scaling factor controlling the strength of the variation,
-   and \(O\) is the newly generated offspring solution.
+   where $S_1$, $S_2$, and $S_3$ are aligned parent clustering solutions,
+   $S_2 - S_3$ is the differential vector between two parent solutions,
+   $F$ is a scaling factor controlling the strength of the variation,
+   and $O$ is the newly generated offspring solution.
 
    After center alignment, corresponding cluster centers are treated as vectors
    and combined mathematically to generate new cluster-center positions. In this
-   process, the differential vector \((S_2 - S_3)\) acts as a directional
-   signal that guides the search toward new clustering configurations.
+   process, the differential vector $(S_2 - S_3)$ acts as a directional signal
+   that guides the search toward new clustering configurations.
 
    Unlike purely random search, Differential Evolution transforms population
    diversity into an active optimization mechanism. Differences between existing
