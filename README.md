@@ -117,12 +117,7 @@ The optimization process works as follows [2]:
 
 
 4. A new candidate clustering solution is generated using the Differential
-   Evolution (DE) recombination rule:
-
-   $$
-   O = S_1 + F \cdot (S_2 - S_3)
-   $$
-
+   Evolution (DE) recombination rule: $O = S_1 + F \cdot (S_2 - S_3)$,
    where $S_1$, $S_2$, and $S_3$ are aligned parent clustering solutions,
    $S_2 - S_3$ is the differential vector between two parent solutions,
    $F$ is a scaling factor controlling the strength of the variation,
